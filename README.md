@@ -67,6 +67,25 @@
 
 默认安装到 `~/Desktop`。安装后可双击 `.app` 启动前后端。
 
+### 桌面图标部署（自定义图标）
+
+安装脚本生成的是 AppleScript `.app`，图标文件路径是：
+
+- `LiteratureClassifierLauncher.app/Contents/Resources/applet.icns`
+
+如果需要部署自定义桌面图标：
+
+```bash
+APP=~/Desktop/LiteratureClassifierLauncher.app
+cp /path/to/your-icon.icns "$APP/Contents/Resources/applet.icns"
+touch "$APP"
+killall Finder
+```
+
+说明：
+- `your-icon.icns` 建议包含完整尺寸（含 1024x1024）。
+- 每次重新运行 `./web/install_app_to_desktop.sh` 后，`.app` 会被重建；如需自定义图标，请再次覆盖 `applet.icns`。
+
 ## 配置要点
 
 ### 1) 项目配置
