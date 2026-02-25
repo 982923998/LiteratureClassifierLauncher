@@ -61,9 +61,11 @@
 
 ```bash
 ./web/install_app_to_desktop.sh
+# 或指定安装目录（例如：Desktop/AI）
+./web/install_app_to_desktop.sh /Users/chenmayao/Desktop/AI
 ```
 
-安装后可在桌面双击 `.app` 启动前后端。
+默认安装到 `~/Desktop`。安装后可双击 `.app` 启动前后端。
 
 ## 配置要点
 

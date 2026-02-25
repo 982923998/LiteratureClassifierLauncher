@@ -171,6 +171,19 @@ button {
   border: 1px solid var(--line);
 }
 
+.path-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.path-picker-btn {
+  min-height: 42px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
 .danger-btn {
   background: #fce8e6;
   color: var(--danger);
@@ -600,6 +613,10 @@ th {
   .control-grid,
   .suggest-control-grid,
   .classify-control-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .path-input-row {
     grid-template-columns: 1fr;
   }
 }

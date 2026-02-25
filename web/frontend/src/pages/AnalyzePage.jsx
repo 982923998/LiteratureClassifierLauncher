@@ -16,6 +16,8 @@ export default function AnalyzePage() {
   const [task, setTask] = useState(null);
   const [logs, setLogs] = useState([]);
   const [error, setError] = useState('');
+  const [pathCheckError, setPathCheckError] = useState('');
+  const [pickingDir, setPickingDir] = useState(false);
 
   const wsRef = useRef(null);
 
@@ -39,12 +41,14 @@ export default function AnalyzePage() {
     if (!trimmed) {
       setPapers([]);
       setSelectedPdf('');
+      setPathCheckError('');
       return;
     }
     try {
       const query = new URLSearchParams({ pdf_dir: trimmed });
       const data = await fetchJSON(`/api/analyze/papers?${query.toString()}`);
       setPapers(data.papers || []);
+      setPathCheckError('');
       setSelectedPdf((prev) =>
         (data.papers || []).some((item) => item.source_pdf === prev)
           ? prev
@@ -53,6 +57,7 @@ export default function AnalyzePage() {
     } catch (err) {
       setPapers([]);
       setSelectedPdf('');
+      setPathCheckError(String(err.message || err));
       if (!silent) {
         setError(String(err.message || err));
       }
@@ -127,6 +132,7 @@ export default function AnalyzePage() {
     }
 
     setError('');
+    setPathCheckError('');
     setLogs([]);
 
     const payload = {
@@ -149,6 +155,36 @@ export default function AnalyzePage() {
       connectTaskSocket(result.task.task_id);
     } catch (err) {
       setError(String(err.message || err));
+    }
+  };
+
+  const handlePickDirectory = async () => {
+    setError('');
+    setPathCheckError('');
+    setPickingDir(true);
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 15000);
+    try {
+      const result = await fetchJSON('/api/system/pick-directory', {
+        method: 'POST',
+        body: JSON.stringify({ prompt: '请选择包含 PDF 的目录' }),
+        signal: controller.signal
+      });
+      const nextPath = String(result.path || '').trim();
+      if (!nextPath) {
+        throw new Error('未获取到目录路径');
+      }
+      setPdfDir(nextPath);
+      await loadPapers(nextPath);
+    } catch (err) {
+      if (err?.name === 'AbortError') {
+        setError('目录选择超时，请手动粘贴路径或重试。');
+      } else {
+        setError(String(err.message || err));
+      }
+    } finally {
+      window.clearTimeout(timeoutId);
+      setPickingDir(false);
     }
   };
 
@@ -180,12 +216,22 @@ export default function AnalyzePage() {
         <div className="control-grid">
           <label>
             PDF 路径
-            <input
-              value={pdfDir}
-              onChange={(e) => setPdfDir(e.target.value)}
-              placeholder="输入或粘贴包含 PDF 的目录路径"
-              list="pdf-path-presets"
-            />
+            <div className="path-input-row">
+              <input
+                value={pdfDir}
+                onChange={(e) => setPdfDir(e.target.value)}
+                placeholder="输入或粘贴包含 PDF 的目录路径"
+                list="pdf-path-presets"
+              />
+              <button
+                type="button"
+                className="secondary-btn path-picker-btn"
+                onClick={handlePickDirectory}
+                disabled={pickingDir}
+              >
+                {pickingDir ? '选择中...' : '选择文件夹'}
+              </button>
+            </div>
             <datalist id="pdf-path-presets">
               {projects.map((item) => (
                 <option key={item.id} value={item.pdf_dir}>
@@ -234,6 +280,7 @@ export default function AnalyzePage() {
         ) : null}
 
         {error ? <div className="error-box">{error}</div> : null}
+        {pathCheckError ? <div className="error-box">路径检查失败：{pathCheckError}</div> : null}
       </div>
 
       <div className="analyze-layout">

@@ -74,6 +74,10 @@ class OpenCodexRequest(BaseModel):
     project: str
 
 
+class PickDirectoryRequest(BaseModel):
+    prompt: Optional[str] = None
+
+
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -82,8 +86,18 @@ def health() -> dict[str, str]:
 @app.get("/api/projects")
 def get_projects() -> dict[str, list[dict[str, Any]]]:
     items: list[dict[str, Any]] = []
+    invalid_items: list[dict[str, str]] = []
     for project in list_projects():
-        cfg = load_config(project)
+        try:
+            cfg = load_config(project)
+        except Exception as exc:
+            invalid_items.append(
+                {
+                    "id": project,
+                    "error": str(exc),
+                }
+            )
+            continue
         items.append(
             {
                 "id": project,
@@ -93,7 +107,7 @@ def get_projects() -> dict[str, list[dict[str, Any]]]:
                 "md_output_root": str(cfg.md_output_root),
             }
         )
-    return {"projects": items}
+    return {"projects": items, "invalid_projects": invalid_items}
 
 
 @app.get("/api/projects/{project}/papers")
@@ -105,7 +119,7 @@ def get_project_papers(project: str) -> dict[str, Any]:
 
 @app.get("/api/analyze/papers")
 def get_analyze_papers(pdf_dir: str) -> dict[str, Any]:
-    cfg = _get_adhoc_config_or_400(pdf_dir)
+    cfg = _get_adhoc_config_or_400(pdf_dir, ensure_dirs=False)
     papers = _build_paper_index(cfg)
     return {"pdf_dir": str(cfg.pdf_input_dir), "papers": papers}
 
@@ -191,7 +205,7 @@ def get_task(task_id: str) -> dict[str, Any]:
 
 @app.get("/api/pdf")
 def get_pdf(path: str, project: Optional[str] = None, pdf_dir: Optional[str] = None) -> FileResponse:
-    cfg = _resolve_content_config(project=project, pdf_dir=pdf_dir)
+    cfg = _resolve_content_config(project=project, pdf_dir=pdf_dir, ensure_dirs=False)
     roots = [cfg.pdf_input_dir, cfg.pdf_processed_dir]
     resolved = _resolve_safe_path(path, roots)
     if not resolved.exists():
@@ -207,7 +221,7 @@ def get_pdf(path: str, project: Optional[str] = None, pdf_dir: Optional[str] = N
 
 @app.post("/api/pdf/open")
 def open_pdf(req: OpenPdfRequest) -> dict[str, str]:
-    cfg = _resolve_content_config(project=req.project, pdf_dir=req.pdf_dir)
+    cfg = _resolve_content_config(project=req.project, pdf_dir=req.pdf_dir, ensure_dirs=False)
     roots = [cfg.pdf_input_dir, cfg.pdf_processed_dir]
     resolved = _resolve_safe_path(req.path, roots)
     if not resolved.exists():
@@ -277,9 +291,46 @@ def open_codex_terminal(req: OpenCodexRequest) -> dict[str, str]:
     }
 
 
+@app.post("/api/system/pick-directory")
+def pick_directory(req: PickDirectoryRequest) -> dict[str, str]:
+    prompt = (req.prompt or "请选择包含 PDF 的目录").strip() or "请选择包含 PDF 的目录"
+    try:
+        result = subprocess.run(
+            [
+                "/usr/bin/osascript",
+                "-e",
+                f'set chosenFolder to choose folder with prompt {json.dumps(prompt, ensure_ascii=False)}',
+                "-e",
+                "POSIX path of chosenFolder",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        stderr = (exc.stderr or "").strip()
+        stdout = (exc.stdout or "").strip()
+        detail = stderr or stdout or str(exc)
+        if "-128" in detail:
+            raise HTTPException(status_code=400, detail="已取消目录选择") from exc
+        if "Connection invalid" in detail or "Not authorized" in detail:
+            raise HTTPException(
+                status_code=400,
+                detail="当前运行环境不支持系统目录选择窗口，请手动粘贴 PDF 路径。",
+            ) from exc
+        raise HTTPException(status_code=500, detail=f"选择目录失败: {detail}") from exc
+
+    selected = (result.stdout or "").strip()
+    if not selected:
+        raise HTTPException(status_code=500, detail="选择目录失败：未返回路径")
+
+    normalized = selected[:-1] if selected.endswith("/") and selected != "/" else selected
+    return {"path": normalized}
+
+
 @app.get("/api/md")
 def get_markdown(path: str, project: Optional[str] = None, pdf_dir: Optional[str] = None) -> PlainTextResponse:
-    cfg = _resolve_content_config(project=project, pdf_dir=pdf_dir)
+    cfg = _resolve_content_config(project=project, pdf_dir=pdf_dir, ensure_dirs=False)
     roots = [cfg.md_output_root]
     resolved = _resolve_safe_path(path, roots)
     if not resolved.exists():
@@ -436,9 +487,15 @@ def _get_config_or_404(project: str):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-def _get_adhoc_config_or_400(pdf_dir: str):
+def _get_adhoc_config_or_400(pdf_dir: str, ensure_dirs: bool = True):
     try:
-        return load_config_from_pdf_dir(pdf_dir)
+        return load_config_from_pdf_dir(pdf_dir, ensure_dirs=ensure_dirs)
+    except PermissionError as exc:
+        detail = (
+            f"路径可读但不可写: {pdf_dir} ({exc})。"
+            "请授予启动进程目录写权限，或改用可写目录。"
+        )
+        raise HTTPException(status_code=400, detail=detail) from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"无效路径: {pdf_dir} ({exc})") from exc
 
@@ -447,11 +504,11 @@ def _build_path_config_token(pdf_dir: str) -> str:
     return f"path:{Path(pdf_dir).expanduser().resolve()}"
 
 
-def _resolve_content_config(project: Optional[str], pdf_dir: Optional[str]):
+def _resolve_content_config(project: Optional[str], pdf_dir: Optional[str], ensure_dirs: bool = True):
     if project and project.strip():
         return _get_config_or_404(project)
     if pdf_dir and pdf_dir.strip():
-        return _get_adhoc_config_or_400(pdf_dir)
+        return _get_adhoc_config_or_400(pdf_dir, ensure_dirs=ensure_dirs)
     raise HTTPException(status_code=400, detail="读取文件需要提供 project 或 pdf_dir")
 
 

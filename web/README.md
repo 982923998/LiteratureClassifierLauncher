@@ -38,7 +38,8 @@ npm run dev
 
 ## 桌面启动器（.app）
 
-- 启动器路径：`web/app/LiteratureClassifierLauncher.app`
+- 默认启动器路径：`~/Desktop/LiteratureClassifierLauncher.app`
+- 指定目录安装：`./web/install_app_to_desktop.sh /Users/chenmayao/Desktop/AI`
 - 双击后会执行 `web/launch_web_app.sh`，自动安装依赖并启动前后端。
 - 停止服务：`./web/stop_web_app.sh`
 - 日志目录：`web/runtime/`

@@ -140,7 +140,7 @@ def load_config(project_name: str) -> ProjectConfig:
     return config
 
 
-def load_config_from_pdf_dir(pdf_dir: str | Path) -> ProjectConfig:
+def load_config_from_pdf_dir(pdf_dir: str | Path, ensure_dirs: bool = True) -> ProjectConfig:
     """
     构造临时配置（不依赖 projects.yaml），用于 Analyze 阶段路径直选。
     """
@@ -151,7 +151,8 @@ def load_config_from_pdf_dir(pdf_dir: str | Path) -> ProjectConfig:
         pdf_dir=path,
         raw=raw,
     )
-    _ensure_dirs(config)
+    if ensure_dirs:
+        _ensure_dirs(config)
     return config
 
 
