@@ -1,0 +1,9 @@
+projects:
+  demo:
+    name: 示例项目
+    pdf_dir: /path/to/your/pdf_folder
+    custom_areas:
+      class: 根据研究领域填写提取重点
+    classification:
+      categories: {}
+      enabled: true

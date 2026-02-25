@@ -1,0 +1,30 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Local virtualenv
+.venv/
+web/backend/.venv/
+
+# Node
+node_modules/
+web/frontend/node_modules/
+web/frontend/dist/
+
+# Runtime and logs
+scripts/logs/*.log
+web/runtime/*
+!web/runtime/.gitkeep
+
+# Sensitive/local configs
+scripts/.env
+scripts/config/projects.yaml
+
+# Editor
+.vscode/
+.idea/
